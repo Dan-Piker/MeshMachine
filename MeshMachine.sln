@@ -1,0 +1,23 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual C# Express 2010
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MeshMachine", "MeshMachine\MeshMachine.csproj", "{9EA05C6C-A88C-4FF2-8E7D-98FC412F4944}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug32|Any CPU = Debug32|Any CPU
+		Debug64|Any CPU = Debug64|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{9EA05C6C-A88C-4FF2-8E7D-98FC412F4944}.Debug32|Any CPU.ActiveCfg = Debug32|Any CPU
+		{9EA05C6C-A88C-4FF2-8E7D-98FC412F4944}.Debug32|Any CPU.Build.0 = Debug32|Any CPU
+		{9EA05C6C-A88C-4FF2-8E7D-98FC412F4944}.Debug64|Any CPU.ActiveCfg = Debug64|Any CPU
+		{9EA05C6C-A88C-4FF2-8E7D-98FC412F4944}.Debug64|Any CPU.Build.0 = Debug64|Any CPU
+		{9EA05C6C-A88C-4FF2-8E7D-98FC412F4944}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9EA05C6C-A88C-4FF2-8E7D-98FC412F4944}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
