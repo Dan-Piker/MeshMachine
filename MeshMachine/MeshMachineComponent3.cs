@@ -9,17 +9,13 @@ using PlanktonGh;
 
 namespace MeshMachine
 {
-    public class MeshMachineComponent2 : GH_Component
-    {       
-        public MeshMachineComponent2()
+    public class MeshMachineComponent3 : GH_Component
+    {
+        public MeshMachineComponent3()
             : base("MeshMachine", "MeshMachine",
                 "Remeshing tool",
                 "Kangaroo", "Mesh")
         {
-        }
-        public override GH_Exposure Exposure
-        {
-            get { return GH_Exposure.hidden; }
         }
 
 
@@ -33,25 +29,39 @@ namespace MeshMachine
             pManager.AddPointParameter("FixVertices", "FixV", "Points to keep fixed during remeshing", GH_ParamAccess.list);
             pManager[3].Optional = true;
 
+            //4
             pManager.AddIntegerParameter("Flip", "Flip", "Criterion used to decide when to flip edges (0 for valence based, 1 for angle based)", GH_ParamAccess.item, 1);
-
-            //pManager.AddNumberParameter("FixTolerance", "FT", "Distance tolerance for FixCurves and FixVertices", GH_ParamAccess.item, 0.01);
+            
+            //5
             pManager.AddNumberParameter("PullStrength", "Pull", "Strength of pull to target geometry (between 0 and 1). Set to 0 for minimal surfaces", GH_ParamAccess.item, 0.8);
-            //pManager.AddNumberParameter("SmoothStrength", "S", "Strength of smoothing (between 0 and 1)", GH_ParamAccess.item, 0.8);
-
-            //pManager.AddBooleanParameter("Minimal", "MinSurf", "If true, the mesh will not be pulled onto the target surface, but relaxed into a minimal surface", GH_ParamAccess.item, false);
-
-            //pManager.AddNumberParameter("LengthTolerance", "LT", "Allowance for how much edge lengths can vary from target value before being split or collapsed (between 0 and 1)", GH_ParamAccess.item, 0.15);
-
+            
+            //6
             pManager.AddNumberParameter("CurvatureAdaptivity", "Adapt", "If greater than 0, edges will be shorter in regions of tighter curvature (Values between 0 and 1 blend between uniform lengths and fully curvature dependent)", GH_ParamAccess.item, 0);
-            //pManager.AddNumberParameter("Blend", "B", "When CurvatureDependence is true, this controls how sharply the edge lengths change across the surface", GH_ParamAccess.item, 0);
-
+            
+            //7
             pManager.AddNumberParameter("BoundaryScale", "BScale", "Edge length reduction factor at boundaries. Should be greater than 0 and less than 1", GH_ParamAccess.item, 1.0);
+            
+            //8
             pManager.AddNumberParameter("BoundaryDistance", "BDist", "Distance over which to blend to boundary edge scale", GH_ParamAccess.item, 5.0);
 
+            //9
+            pManager.AddPointParameter("SizePoints", "SizP", "Locations for edge length values to interpolate between", GH_ParamAccess.list);
+            pManager[9].Optional = true;
+
+            //10
+            pManager.AddNumberParameter("SizeValues", "SizV", "Edge lengths to interpolate", GH_ParamAccess.list);
+            pManager[10].Optional = true;
+
+            //11
+            pManager.AddIntegerParameter("Exponent", "Exp", "Power for interpolation (see http://en.wikipedia.org/wiki/Inverse_distance_weighting#Shepard.27s_method)", GH_ParamAccess.item, 2);
+
+            //12
+            pManager.AddNumberParameter("Background", "Bkgd", "Weighting for background edge length in interpolation", GH_ParamAccess.item, 0.5);
+
+            //13
             pManager.AddBooleanParameter("Reset", "Reset", "True to initialize, false to run remeshing. Connect a timer for continuous remeshing", GH_ParamAccess.item, true);
             //later add pressure/volume?
-            
+
         }
 
         protected override void RegisterOutputParams(GH_OutputParamManager pManager)
@@ -73,7 +83,7 @@ namespace MeshMachine
         /// to store data in output parameters.</param>
         protected override void SolveInstance(IGH_DataAccess DA)
         {
-       
+
             bool reset = false;
             double L = new double();
             int Flip = 0;
@@ -91,50 +101,83 @@ namespace MeshMachine
             double BoundScale = 1.0;
             double BoundDist = 5.0;
 
+            var SizP = new List<Point3d>();
+            var SizV = new List<double>();
+            int WExp = 2;
+            double BGW = 1;
+
             DA.GetData<double>(1, ref L);
             DA.GetDataList<Curve>(2, FC);
             DA.GetDataList<Point3d>(3, FV);
             DA.GetData<int>(4, ref Flip);
-    
+
             DA.GetData<double>(5, ref PullStrength);
-       
+
             DA.GetData<double>(6, ref CurvDep);
 
             DA.GetData<double>(7, ref BoundScale);
             DA.GetData<double>(8, ref BoundDist);
 
-            DA.GetData<bool>(9, ref reset);
+            DA.GetDataList<Point3d>(9, SizP);
+            DA.GetDataList<double>(10, SizV);
+
+            DA.GetData<int>(11, ref WExp);
+            DA.GetData<double>(12, ref BGW);
+
+            DA.GetData<bool>(13, ref reset);
+
+            Grasshopper.Kernel.Types.GH_ObjectWrapper Surf = new Grasshopper.Kernel.Types.GH_ObjectWrapper();
+            DA.GetData<Grasshopper.Kernel.Types.GH_ObjectWrapper>(0, ref Surf);
 
             if (PullStrength == 0) { Minim = true; }
 
+            if (Surf.Value is GH_Mesh)
+            {
+                DA.GetData<Mesh>(0, ref M);
+                M.Faces.ConvertQuadsToTriangles();
+            }
+            else
+            {
+                MeshingParameters MeshParams = new MeshingParameters();
+                MeshParams.MaximumEdgeLength = 3 * L;
+                MeshParams.MinimumEdgeLength = L;
+                MeshParams.JaggedSeams = false;
+                MeshParams.SimplePlanes = false;
+                Brep SB = null;
+                DA.GetData<Brep>(0, ref SB);
+                Mesh[] BrepMeshes = Mesh.CreateFromBrep(SB, MeshParams);
+                M = new Mesh();
+                foreach (var mesh in BrepMeshes)
+                    M.Append(mesh);
+            }
 
             if (reset || initialized == false)
             {
                 #region reset
-                Grasshopper.Kernel.Types.GH_ObjectWrapper Surf = new Grasshopper.Kernel.Types.GH_ObjectWrapper();
-                DA.GetData<Grasshopper.Kernel.Types.GH_ObjectWrapper>(0, ref Surf);
-                if (Surf.Value is GH_Mesh)
-                {
-                    DA.GetData<Mesh>(0, ref M);
+                //Grasshopper.Kernel.Types.GH_ObjectWrapper Surf = new Grasshopper.Kernel.Types.GH_ObjectWrapper();
+                //DA.GetData<Grasshopper.Kernel.Types.GH_ObjectWrapper>(0, ref Surf);
+                //if (Surf.Value is GH_Mesh)
+                //{
+                //    DA.GetData<Mesh>(0, ref M);
                     M.Faces.ConvertQuadsToTriangles();
                     P = M.ToPlanktonMesh();
-                }
-                else
-                {
-                    MeshingParameters MeshParams = new MeshingParameters();
-                    MeshParams.MaximumEdgeLength = 3 * L;
-                    MeshParams.MinimumEdgeLength = L;
-                    MeshParams.JaggedSeams = false;
-                    MeshParams.SimplePlanes = false;
-                    Brep SB = null;
-                    DA.GetData<Brep>(0, ref SB);
-                    Mesh[] BrepMeshes = Mesh.CreateFromBrep(SB, MeshParams);
-                    M = new Mesh();
-                    foreach (var mesh in BrepMeshes)
-                        M.Append(mesh);
-                    M.Faces.ConvertQuadsToTriangles();
-                    P = M.ToPlanktonMesh();
-                }
+                //}
+                //else
+                //{
+                //    MeshingParameters MeshParams = new MeshingParameters();
+                //    MeshParams.MaximumEdgeLength = 3 * L;
+                //    MeshParams.MinimumEdgeLength = L;
+                //    MeshParams.JaggedSeams = false;
+                //    MeshParams.SimplePlanes = false;
+                //    Brep SB = null;
+                //    DA.GetData<Brep>(0, ref SB);
+                //    Mesh[] BrepMeshes = Mesh.CreateFromBrep(SB, MeshParams);
+                //    M = new Mesh();
+                //    foreach (var mesh in BrepMeshes)
+                //        M.Append(mesh);
+                //    M.Faces.ConvertQuadsToTriangles();
+                //    P = M.ToPlanktonMesh();
+                //}
                 initialized = true;
 
                 AnchorV.Clear();
@@ -218,6 +261,7 @@ namespace MeshMachine
                           && (Visited[vEnd] == false))
                         {
                             double L2 = L;
+                            Point3d Mid = MidPt(P, i);
 
                             if (CurvDep > 0)
                             {
@@ -228,7 +272,7 @@ namespace MeshMachine
                                 {
                                     L2 = L2 * (CurvDep) + L * (1.0 - CurvDep);
                                 }
-                               
+
                             }
                             if (BoundScale != 1.0)
                             {
@@ -237,21 +281,25 @@ namespace MeshMachine
                                 for (int j = 0; j < FC.Count; j++)
                                 {
                                     double param = new double();
-                                    Point3d Mid = MidPt(P, i);
+                                    
                                     FC[j].ClosestPoint(Mid, out param);
                                     double ThisDist = Mid.DistanceTo(FC[j].PointAt(param));
                                     if (ThisDist < MinDist)
-                                        {MinDist = ThisDist;}
+                                    { MinDist = ThisDist; }
                                 }
 
-                                if(MinDist<BoundDist)
+                                if (MinDist < BoundDist)
                                 {
                                     L2 = L2 * BoundScale + (MinDist / BoundDist) * (L2 * (1 - BoundScale));
-                                }                                             
+                                }
                             }
 
-
-
+                            if(SizP.Count>0)
+                            {
+                                L2 = WeightedCombo(Mid, SizP, SizV, WExp, L2, BGW);
+                              //  L2 = (WL * (1.0 - BGW)) + (BGW * L2);
+                            }
+                            
                             if (EdgeLength[2 * i] > (1 + t) * (4f / 3f) * L2)
                             {
 
@@ -328,6 +376,7 @@ namespace MeshMachine
                                 }
 
                                 double L2 = L;
+                                Point3d Mid = MidPt(P, i);
 
                                 if (CurvDep > 0)
                                 {
@@ -347,7 +396,7 @@ namespace MeshMachine
                                     for (int j = 0; j < FC.Count; j++)
                                     {
                                         double param = new double();
-                                        Point3d Mid = MidPt(P, i);
+                                        
                                         FC[j].ClosestPoint(Mid, out param);
                                         double ThisDist = Mid.DistanceTo(FC[j].PointAt(param));
                                         if (ThisDist < MinDist)
@@ -358,6 +407,13 @@ namespace MeshMachine
                                     {
                                         L2 = L2 * BoundScale + (MinDist / BoundDist) * (L2 * (1 - BoundScale));
                                     }
+                                }
+
+                                if (SizP.Count > 0)
+                                {
+                                    L2 = WeightedCombo(Mid, SizP, SizV, WExp, L2, BGW);
+                                    //double WL = WeightedCombo(Mid, SizP, SizV, WExp);
+                                    //L2 = (WL * (1.0 - BGW)) + (BGW * L2);
                                 }
 
                                 if ((Collapse_option != 0) && (EdgeLength[2 * i] < (1 - t) * 4f / 5f * L2))
@@ -637,7 +693,7 @@ namespace MeshMachine
         /// </summary>
         public override Guid ComponentGuid
         {
-            get { return new Guid("{addeee36-5a86-4bc9-a25d-885f3abb59fb}"); }
+            get { return new Guid("{502f3639-bf2e-4c15-b50f-a14c8344edea}"); }
         }
 
         private Point3d MidPt(PlanktonMesh P, int E)
@@ -735,6 +791,26 @@ namespace MeshMachine
                     return (Vector3d.VectorAngle(Normal1, Normal2));
                 }
             }
+        }
+
+        public double WeightedCombo(Point3d Pos, List<Point3d> SizePoints, List<double> Sizes, int Falloff, double BVal, double BWeight)
+        {
+            double WeightedSize = 0, WeightSum = 0;
+            double[] Weighting = new double[SizePoints.Count];
+
+            for (int j = 0; j < SizePoints.Count; j++)
+            {
+                Weighting[j] = Math.Pow(Pos.DistanceTo(SizePoints[j]), -1.0 * Falloff);
+                WeightSum += Weighting[j];
+            }
+
+            WeightSum += BWeight;
+            WeightedSize += BWeight * (1.0 / WeightSum) * BVal;
+            for (int j = 0; j < SizePoints.Count; j++)
+            {
+                WeightedSize += Weighting[j] * (1.0 / WeightSum) * Sizes[j];
+            }
+            return WeightedSize;
         }
 
         private static Vector3d[] LaplacianSmooth(PlanktonMesh P, int W, double Strength)

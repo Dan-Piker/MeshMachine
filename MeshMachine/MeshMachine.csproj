@@ -43,20 +43,16 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="GH_IO">
-      <HintPath>..\..\..\..\..\Desktop\Grasshopper\GH_IO.dll</HintPath>
-      <Private>False</Private>
+      <HintPath>..\..\..\..\Desktop\Grasshopper\GH_IO.dll</HintPath>
     </Reference>
     <Reference Include="Grasshopper">
-      <HintPath>..\..\..\..\..\Desktop\Grasshopper\Grasshopper.dll</HintPath>
-      <Private>False</Private>
+      <HintPath>..\..\..\..\Desktop\Grasshopper\Grasshopper.dll</HintPath>
     </Reference>
     <Reference Include="Plankton">
-      <HintPath>..\..\..\..\..\AppData\Roaming\Grasshopper\Libraries\Plankton.dll</HintPath>
-      <Private>False</Private>
+      <HintPath>..\..\Plankton\bin\Release\Plankton.dll</HintPath>
     </Reference>
-    <Reference Include="PlanktonGh.dll">
-      <HintPath>..\..\..\..\..\AppData\Roaming\Grasshopper\Libraries\PlanktonGh.dll</HintPath>
-      <Private>False</Private>
+    <Reference Include="PlanktonGh">
+      <HintPath>..\..\Plankton\bin\Release\PlanktonGh.dll</HintPath>
     </Reference>
     <Reference Include="RhinoCommon">
       <HintPath>..\..\..\..\..\..\..\Program Files\Rhinoceros 5.0 (64-bit)\System\RhinoCommon.dll</HintPath>
@@ -70,6 +66,7 @@
   <ItemGroup>
     <Compile Include="MeshMachineComponent.cs" />
     <Compile Include="MeshMachineComponent2.cs" />
+    <Compile Include="MeshMachineComponent3.cs" />
     <Compile Include="MeshMachineInfo.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Properties\Resources.Designer.cs">
