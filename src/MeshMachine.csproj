@@ -19,7 +19,7 @@
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
-    <OutputPath>bin\</OutputPath>
+    <OutputPath>..\bin\</OutputPath>
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
@@ -28,7 +28,7 @@
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
-    <OutputPath>bin\</OutputPath>
+    <OutputPath>..\bin\</OutputPath>
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <CodeAnalysisIgnoreBuiltInRules>false</CodeAnalysisIgnoreBuiltInRules>
@@ -36,26 +36,30 @@
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
     <Optimize>true</Optimize>
-    <OutputPath>bin\</OutputPath>
+    <OutputPath>..\bin\</OutputPath>
     <DefineConstants>TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="GH_IO">
-      <HintPath>..\..\..\..\Desktop\Grasshopper\GH_IO.dll</HintPath>
+      <HintPath>..\lib\GH_IO.dll</HintPath>
+      <Private>False</Private>
     </Reference>
     <Reference Include="Grasshopper">
-      <HintPath>..\..\..\..\Desktop\Grasshopper\Grasshopper.dll</HintPath>
+      <HintPath>..\lib\Grasshopper.dll</HintPath>
+      <Private>False</Private>
     </Reference>
     <Reference Include="Plankton">
-      <HintPath>..\..\Plankton\bin\Release\Plankton.dll</HintPath>
+      <HintPath>..\lib\Plankton.dll</HintPath>
+      <Private>False</Private>
     </Reference>
     <Reference Include="PlanktonGh">
-      <HintPath>..\..\Plankton\bin\Release\PlanktonGh.dll</HintPath>
+      <HintPath>..\lib\Plankton.gha</HintPath>
+      <Private>False</Private>
     </Reference>
     <Reference Include="RhinoCommon">
-      <HintPath>..\..\..\..\..\..\..\Program Files\Rhinoceros 5.0 (64-bit)\System\RhinoCommon.dll</HintPath>
+      <HintPath>..\lib\RhinoCommon.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="System" />
