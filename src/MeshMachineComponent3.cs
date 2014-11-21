@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-
 using Grasshopper.Kernel;
 using Grasshopper.Kernel.Types;
 using Rhino.Geometry;
@@ -31,16 +30,16 @@ namespace MeshMachine
 
             //4
             pManager.AddIntegerParameter("Flip", "Flip", "Criterion used to decide when to flip edges (0 for valence based, 1 for angle based)", GH_ParamAccess.item, 1);
-            
+
             //5
             pManager.AddNumberParameter("PullStrength", "Pull", "Strength of pull to target geometry (between 0 and 1). Set to 0 for minimal surfaces", GH_ParamAccess.item, 0.8);
-            
+
             //6
             pManager.AddNumberParameter("CurvatureAdaptivity", "Adapt", "If greater than 0, edges will be shorter in regions of tighter curvature (Values between 0 and 1 blend between uniform lengths and fully curvature dependent)", GH_ParamAccess.item, 0);
-            
+
             //7
             pManager.AddNumberParameter("BoundaryScale", "BScale", "Edge length reduction factor at boundaries. Should be greater than 0 and less than 1", GH_ParamAccess.item, 1.0);
-            
+
             //8
             pManager.AddNumberParameter("BoundaryDistance", "BDist", "Distance over which to blend to boundary edge scale", GH_ParamAccess.item, 5.0);
 
@@ -59,6 +58,9 @@ namespace MeshMachine
             pManager.AddNumberParameter("Background", "Bkgd", "Weighting for background edge length in interpolation", GH_ParamAccess.item, 0.5);
 
             //13
+            pManager.AddIntegerParameter("Iterations", "Iter", "Number of steps between outputs", GH_ParamAccess.item, 1);
+
+            //14
             pManager.AddBooleanParameter("Reset", "Reset", "True to initialize, false to run remeshing. Connect a timer for continuous remeshing", GH_ParamAccess.item, true);
             //later add pressure/volume?
 
@@ -106,6 +108,8 @@ namespace MeshMachine
             int WExp = 2;
             double BGW = 1;
 
+            int Iters = 1;
+
             DA.GetData<double>(1, ref L);
             DA.GetDataList<Curve>(2, FC);
             DA.GetDataList<Point3d>(3, FV);
@@ -123,8 +127,8 @@ namespace MeshMachine
 
             DA.GetData<int>(11, ref WExp);
             DA.GetData<double>(12, ref BGW);
-
-            DA.GetData<bool>(13, ref reset);
+            DA.GetData<int>(13, ref Iters);
+            DA.GetData<bool>(14, ref reset);
 
             Grasshopper.Kernel.Types.GH_ObjectWrapper Surf = new Grasshopper.Kernel.Types.GH_ObjectWrapper();
             DA.GetData<Grasshopper.Kernel.Types.GH_ObjectWrapper>(0, ref Surf);
@@ -154,30 +158,9 @@ namespace MeshMachine
             if (reset || initialized == false)
             {
                 #region reset
-                //Grasshopper.Kernel.Types.GH_ObjectWrapper Surf = new Grasshopper.Kernel.Types.GH_ObjectWrapper();
-                //DA.GetData<Grasshopper.Kernel.Types.GH_ObjectWrapper>(0, ref Surf);
-                //if (Surf.Value is GH_Mesh)
-                //{
-                //    DA.GetData<Mesh>(0, ref M);
-                    M.Faces.ConvertQuadsToTriangles();
-                    P = M.ToPlanktonMesh();
-                //}
-                //else
-                //{
-                //    MeshingParameters MeshParams = new MeshingParameters();
-                //    MeshParams.MaximumEdgeLength = 3 * L;
-                //    MeshParams.MinimumEdgeLength = L;
-                //    MeshParams.JaggedSeams = false;
-                //    MeshParams.SimplePlanes = false;
-                //    Brep SB = null;
-                //    DA.GetData<Brep>(0, ref SB);
-                //    Mesh[] BrepMeshes = Mesh.CreateFromBrep(SB, MeshParams);
-                //    M = new Mesh();
-                //    foreach (var mesh in BrepMeshes)
-                //        M.Append(mesh);
-                //    M.Faces.ConvertQuadsToTriangles();
-                //    P = M.ToPlanktonMesh();
-                //}
+                M.Faces.ConvertQuadsToTriangles();
+                P = M.ToPlanktonMesh();
+
                 initialized = true;
 
                 AnchorV.Clear();
@@ -234,147 +217,34 @@ namespace MeshMachine
 
             else
             {
-                int EdgeCount = P.Halfedges.Count / 2;
-                double[] EdgeLength = P.Halfedges.GetLengths();
-                List<bool> Visited = new List<bool>();
-                Vector3d[] Normals = new Vector3d[P.Vertices.Count];
-
-                for (int i = 0; i < P.Vertices.Count; i++)
+                for (int iter = 0; iter < Iters; iter++)
                 {
-                    Visited.Add(false);
-                    Normals[i] = Normal(P, i);
-                }
+                    int EdgeCount = P.Halfedges.Count / 2;
+                    double[] EdgeLength = P.Halfedges.GetLengths();
+                    List<bool> Visited = new List<bool>();
+                    Vector3d[] Normals = new Vector3d[P.Vertices.Count];
 
-                double t = LengthTol;     //a tolerance for when to split/collapse edges
-                double smooth = SmoothStrength;  //smoothing strength
-                double pull = PullStrength;  //pull to target mesh strength               
-
-                // Split the edges that are too long
-                for (int i = 0; i < EdgeCount; i++)
-                {
-                    if (P.Halfedges[2 * i].IsUnused == false)
+                    for (int i = 0; i < P.Vertices.Count; i++)
                     {
-                        int vStart = P.Halfedges[2 * i].StartVertex;
-                        int vEnd = P.Halfedges[2 * i + 1].StartVertex;
-
-                        if ((Visited[vStart] == false)
-                          && (Visited[vEnd] == false))
-                        {
-                            double L2 = L;
-                            Point3d Mid = MidPt(P, i);
-
-                            if (CurvDep > 0)
-                            {
-                                double NormDiff = Vector3d.VectorAngle(Normals[vStart], Normals[vEnd]);
-                                L2 = Math.Min((1.0 / (3.0 * NormDiff) * L), 5 * L);
-
-                                if (CurvDep != 1)
-                                {
-                                    L2 = L2 * (CurvDep) + L * (1.0 - CurvDep);
-                                }
-
-                            }
-                            if (BoundScale != 1.0)
-                            {
-                                double MinDist = 99954;
-
-                                for (int j = 0; j < FC.Count; j++)
-                                {
-                                    double param = new double();
-                                    
-                                    FC[j].ClosestPoint(Mid, out param);
-                                    double ThisDist = Mid.DistanceTo(FC[j].PointAt(param));
-                                    if (ThisDist < MinDist)
-                                    { MinDist = ThisDist; }
-                                }
-
-                                if (MinDist < BoundDist)
-                                {
-                                    L2 = L2 * BoundScale + (MinDist / BoundDist) * (L2 * (1 - BoundScale));
-                                }
-                            }
-
-                            if(SizP.Count>0)
-                            {
-                                L2 = WeightedCombo(Mid, SizP, SizV, WExp, L2, BGW);
-                              //  L2 = (WL * (1.0 - BGW)) + (BGW * L2);
-                            }
-                            
-                            if (EdgeLength[2 * i] > (1 + t) * (4f / 3f) * L2)
-                            {
-
-                                int SplitHEdge = P.Halfedges.TriangleSplitEdge(2 * i);
-                                if (SplitHEdge != -1)
-                                {
-                                    int SplitCenter = P.Halfedges[SplitHEdge].StartVertex;
-                                    P.Vertices.SetVertex(SplitCenter, MidPt(P, i));
-
-                                    //update the feature information
-                                    FeatureE.Add(FeatureE[i]);
-                                    FeatureV.Add(FeatureE[i]);
-                                    AnchorV.Add(-1);
-
-                                    //2 additional new edges have also been created (or 1 if split was on a boundary)
-                                    //mark these as non-features
-                                    int CEdgeCount = P.Halfedges.Count / 2;
-                                    while (FeatureE.Count < CEdgeCount)
-                                    { FeatureE.Add(-1); }
-
-                                    Visited.Add(true);
-                                    int[] Neighbours = P.Vertices.GetVertexNeighbours(SplitCenter);
-                                    foreach (int n in Neighbours)
-                                    { Visited[n] = true; }
-                                }
-                            }
-
-                        }
+                        Visited.Add(false);
+                        Normals[i] = Normal(P, i);
                     }
-                }
 
-                //Collapse the edges that are too short
-                for (int i = 0; i < EdgeCount; i++)
-                {
-                    if (P.Halfedges[2 * i].IsUnused == false)
+                    double t = LengthTol;     //a tolerance for when to split/collapse edges
+                    double smooth = SmoothStrength;  //smoothing strength
+                    double pull = PullStrength;  //pull to target mesh strength               
+
+                    // Split the edges that are too long
+                    for (int i = 0; i < EdgeCount; i++)
                     {
-                        int vStart = P.Halfedges[2 * i].StartVertex;
-                        int vEnd = P.Halfedges[2 * i + 1].StartVertex;
-                        if ((Visited[vStart] == false)
-                          && (Visited[vEnd] == false))
+                        if (P.Halfedges[2 * i].IsUnused == false)
                         {
-                            if (!(AnchorV[vStart] != -1 && AnchorV[vEnd] != -1)) // if both ends are anchored, don't collapse
-                            {
-                                int Collapse_option = 0; //0 for none, 1 for collapse to midpt, 2 for towards start, 3 for towards end
-                                //if neither are anchorV
-                                if (AnchorV[vStart] == -1 && AnchorV[vEnd] == -1)
-                                {
-                                    // if both on same feature (or neither on a feature)
-                                    if (FeatureV[vStart] == FeatureV[vEnd])
-                                    { Collapse_option = 1; }
-                                    // if start is on a feature and end isn't
-                                    if ((FeatureV[vStart] != -1) && (FeatureV[vEnd] == -1))
-                                    { Collapse_option = 2; }
-                                    // if end is on a feature and start isn't
-                                    if ((FeatureV[vStart] == -1) && (FeatureV[vEnd] != -1))
-                                    { Collapse_option = 3; }
-                                }
-                                else // so one end must be an anchor
-                                {
-                                    // if start is an anchor
-                                    if (AnchorV[vStart] != -1)
-                                    {
-                                        // if both are on same feature, or if the end is not a feature
-                                        if ((FeatureE[i] != -1) || (FeatureV[vEnd] == -1))
-                                        { Collapse_option = 2; }
-                                    }
-                                    // if end is an anchor
-                                    if (AnchorV[vEnd] != -1)
-                                    {
-                                        // if both are on same feature, or if the start is not a feature
-                                        if ((FeatureE[i] != -1) || (FeatureV[vStart] == -1))
-                                        { Collapse_option = 3; }
-                                    }
-                                }
+                            int vStart = P.Halfedges[2 * i].StartVertex;
+                            int vEnd = P.Halfedges[2 * i + 1].StartVertex;
 
+                            if ((Visited[vStart] == false)
+                              && (Visited[vEnd] == false))
+                            {
                                 double L2 = L;
                                 Point3d Mid = MidPt(P, i);
 
@@ -387,8 +257,8 @@ namespace MeshMachine
                                     {
                                         L2 = L2 * (CurvDep) + L * (1.0 - CurvDep);
                                     }
-                                }
 
+                                }
                                 if (BoundScale != 1.0)
                                 {
                                     double MinDist = 99954;
@@ -396,7 +266,7 @@ namespace MeshMachine
                                     for (int j = 0; j < FC.Count; j++)
                                     {
                                         double param = new double();
-                                        
+
                                         FC[j].ClosestPoint(Mid, out param);
                                         double ThisDist = Mid.DistanceTo(FC[j].PointAt(param));
                                         if (ThisDist < MinDist)
@@ -412,260 +282,364 @@ namespace MeshMachine
                                 if (SizP.Count > 0)
                                 {
                                     L2 = WeightedCombo(Mid, SizP, SizV, WExp, L2, BGW);
-                                    //double WL = WeightedCombo(Mid, SizP, SizV, WExp);
-                                    //L2 = (WL * (1.0 - BGW)) + (BGW * L2);
+                                    //  L2 = (WL * (1.0 - BGW)) + (BGW * L2);
                                 }
 
-                                if ((Collapse_option != 0) && (EdgeLength[2 * i] < (1 - t) * 4f / 5f * L2))
+                                if (EdgeLength[2 * i] > (1 + t) * (4f / 3f) * L2)
                                 {
-                                    int Collapsed = -1;
-                                    int CollapseRtn = -1;
-                                    if (Collapse_option == 1)
+
+                                    int SplitHEdge = P.Halfedges.TriangleSplitEdge(2 * i);
+                                    if (SplitHEdge != -1)
                                     {
-                                        Collapsed = P.Halfedges[2 * i].StartVertex;
-                                        P.Vertices.SetVertex(Collapsed, MidPt(P, i));
-                                        CollapseRtn = P.Halfedges.CollapseEdge(2 * i);
-                                    }
-                                    if (Collapse_option == 2)
-                                    {
-                                        Collapsed = P.Halfedges[2 * i].StartVertex;
-                                        CollapseRtn = P.Halfedges.CollapseEdge(2 * i);
-                                    }
-                                    if (Collapse_option == 3)
-                                    {
-                                        Collapsed = P.Halfedges[2 * i + 1].StartVertex;
-                                        CollapseRtn = P.Halfedges.CollapseEdge(2 * i + 1);
-                                    }
-                                    if (CollapseRtn != -1)
-                                    {
-                                        int[] Neighbours = P.Vertices.GetVertexNeighbours(Collapsed);
+                                        int SplitCenter = P.Halfedges[SplitHEdge].StartVertex;
+                                        P.Vertices.SetVertex(SplitCenter, MidPt(P, i));
+
+                                        //update the feature information
+                                        FeatureE.Add(FeatureE[i]);
+                                        FeatureV.Add(FeatureE[i]);
+                                        AnchorV.Add(-1);
+
+                                        //2 additional new edges have also been created (or 1 if split was on a boundary)
+                                        //mark these as non-features
+                                        int CEdgeCount = P.Halfedges.Count / 2;
+                                        while (FeatureE.Count < CEdgeCount)
+                                        { FeatureE.Add(-1); }
+
+                                        Visited.Add(true);
+                                        int[] Neighbours = P.Vertices.GetVertexNeighbours(SplitCenter);
                                         foreach (int n in Neighbours)
                                         { Visited[n] = true; }
                                     }
                                 }
+
                             }
                         }
                     }
-                }
 
-                EdgeCount = P.Halfedges.Count / 2;
-
-                if ((Flip == 0) && (PullStrength > 0))
-                {
-                    //Flip edges to reduce valence error
+                    //Collapse the edges that are too short
                     for (int i = 0; i < EdgeCount; i++)
                     {
-                        if (!P.Halfedges[2 * i].IsUnused
-                          && (P.Halfedges[2 * i].AdjacentFace != -1)
-                          && (P.Halfedges[2 * i + 1].AdjacentFace != -1)
-                          && (FeatureE[i] == -1)  // don't flip feature edges
-                          )
+                        if (P.Halfedges[2 * i].IsUnused == false)
                         {
-                            int Vert1 = P.Halfedges[2 * i].StartVertex;
-                            int Vert2 = P.Halfedges[2 * i + 1].StartVertex;
-                            int Vert3 = P.Halfedges[P.Halfedges[P.Halfedges[2 * i].NextHalfedge].NextHalfedge].StartVertex;
-                            int Vert4 = P.Halfedges[P.Halfedges[P.Halfedges[2 * i + 1].NextHalfedge].NextHalfedge].StartVertex;
-
-                            int Valence1 = P.Vertices.GetValence(Vert1);
-                            int Valence2 = P.Vertices.GetValence(Vert2);
-                            int Valence3 = P.Vertices.GetValence(Vert3);
-                            int Valence4 = P.Vertices.GetValence(Vert4);
-
-                            if (P.Vertices.NakedEdgeCount(Vert1) > 0) { Valence1 += 2; }
-                            if (P.Vertices.NakedEdgeCount(Vert2) > 0) { Valence2 += 2; }
-                            if (P.Vertices.NakedEdgeCount(Vert3) > 0) { Valence3 += 2; }
-                            if (P.Vertices.NakedEdgeCount(Vert4) > 0) { Valence4 += 2; }
-
-                            int CurrentError =
-                              Math.Abs(Valence1 - 6) +
-                              Math.Abs(Valence2 - 6) +
-                              Math.Abs(Valence3 - 6) +
-                              Math.Abs(Valence4 - 6);
-                            int FlippedError =
-                              Math.Abs(Valence1 - 7) +
-                              Math.Abs(Valence2 - 7) +
-                              Math.Abs(Valence3 - 5) +
-                              Math.Abs(Valence4 - 5);
-                            if (CurrentError > FlippedError)
+                            int vStart = P.Halfedges[2 * i].StartVertex;
+                            int vEnd = P.Halfedges[2 * i + 1].StartVertex;
+                            if ((Visited[vStart] == false)
+                              && (Visited[vEnd] == false))
                             {
-                                P.Halfedges.FlipEdge(2 * i);
+                                if (!(AnchorV[vStart] != -1 && AnchorV[vEnd] != -1)) // if both ends are anchored, don't collapse
+                                {
+                                    int Collapse_option = 0; //0 for none, 1 for collapse to midpt, 2 for towards start, 3 for towards end
+                                    //if neither are anchorV
+                                    if (AnchorV[vStart] == -1 && AnchorV[vEnd] == -1)
+                                    {
+                                        // if both on same feature (or neither on a feature)
+                                        if (FeatureV[vStart] == FeatureV[vEnd])
+                                        { Collapse_option = 1; }
+                                        // if start is on a feature and end isn't
+                                        if ((FeatureV[vStart] != -1) && (FeatureV[vEnd] == -1))
+                                        { Collapse_option = 2; }
+                                        // if end is on a feature and start isn't
+                                        if ((FeatureV[vStart] == -1) && (FeatureV[vEnd] != -1))
+                                        { Collapse_option = 3; }
+                                    }
+                                    else // so one end must be an anchor
+                                    {
+                                        // if start is an anchor
+                                        if (AnchorV[vStart] != -1)
+                                        {
+                                            // if both are on same feature, or if the end is not a feature
+                                            if ((FeatureE[i] != -1) || (FeatureV[vEnd] == -1))
+                                            { Collapse_option = 2; }
+                                        }
+                                        // if end is an anchor
+                                        if (AnchorV[vEnd] != -1)
+                                        {
+                                            // if both are on same feature, or if the start is not a feature
+                                            if ((FeatureE[i] != -1) || (FeatureV[vStart] == -1))
+                                            { Collapse_option = 3; }
+                                        }
+                                    }
+
+                                    double L2 = L;
+                                    Point3d Mid = MidPt(P, i);
+
+                                    if (CurvDep > 0)
+                                    {
+                                        double NormDiff = Vector3d.VectorAngle(Normals[vStart], Normals[vEnd]);
+                                        L2 = Math.Min((1.0 / (3.0 * NormDiff) * L), 5 * L);
+
+                                        if (CurvDep != 1)
+                                        {
+                                            L2 = L2 * (CurvDep) + L * (1.0 - CurvDep);
+                                        }
+                                    }
+
+                                    if (BoundScale != 1.0)
+                                    {
+                                        double MinDist = 99954;
+
+                                        for (int j = 0; j < FC.Count; j++)
+                                        {
+                                            double param = new double();
+
+                                            FC[j].ClosestPoint(Mid, out param);
+                                            double ThisDist = Mid.DistanceTo(FC[j].PointAt(param));
+                                            if (ThisDist < MinDist)
+                                            { MinDist = ThisDist; }
+                                        }
+
+                                        if (MinDist < BoundDist)
+                                        {
+                                            L2 = L2 * BoundScale + (MinDist / BoundDist) * (L2 * (1 - BoundScale));
+                                        }
+                                    }
+
+                                    if (SizP.Count > 0)
+                                    {
+                                        L2 = WeightedCombo(Mid, SizP, SizV, WExp, L2, BGW);
+                                        //double WL = WeightedCombo(Mid, SizP, SizV, WExp);
+                                        //L2 = (WL * (1.0 - BGW)) + (BGW * L2);
+                                    }
+
+                                    if ((Collapse_option != 0) && (EdgeLength[2 * i] < (1 - t) * 4f / 5f * L2))
+                                    {
+                                        int Collapsed = -1;
+                                        int CollapseRtn = -1;
+                                        if (Collapse_option == 1)
+                                        {
+                                            Collapsed = P.Halfedges[2 * i].StartVertex;
+                                            P.Vertices.SetVertex(Collapsed, MidPt(P, i));
+                                            CollapseRtn = P.Halfedges.CollapseEdge(2 * i);
+                                        }
+                                        if (Collapse_option == 2)
+                                        {
+                                            Collapsed = P.Halfedges[2 * i].StartVertex;
+                                            CollapseRtn = P.Halfedges.CollapseEdge(2 * i);
+                                        }
+                                        if (Collapse_option == 3)
+                                        {
+                                            Collapsed = P.Halfedges[2 * i + 1].StartVertex;
+                                            CollapseRtn = P.Halfedges.CollapseEdge(2 * i + 1);
+                                        }
+                                        if (CollapseRtn != -1)
+                                        {
+                                            int[] Neighbours = P.Vertices.GetVertexNeighbours(Collapsed);
+                                            foreach (int n in Neighbours)
+                                            { Visited[n] = true; }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
-                }
-                else
-                {
-                    //Flip edges based on angle
-                    for (int i = 0; i < EdgeCount; i++)
+
+                    EdgeCount = P.Halfedges.Count / 2;
+
+                    if ((Flip == 0) && (PullStrength > 0))
                     {
-                        if (!P.Halfedges[2 * i].IsUnused
-                          && (P.Halfedges[2 * i].AdjacentFace != -1)
-                          && (P.Halfedges[2 * i + 1].AdjacentFace != -1)
-                          && (FeatureE[i] == -1) // don't flip feature edges
-                          )
+                        //Flip edges to reduce valence error
+                        for (int i = 0; i < EdgeCount; i++)
                         {
-                            int Vert1 = P.Halfedges[2 * i].StartVertex;
-                            int Vert2 = P.Halfedges[2 * i + 1].StartVertex;
-                            int Vert3 = P.Halfedges[P.Halfedges[P.Halfedges[2 * i].NextHalfedge].NextHalfedge].StartVertex;
-                            int Vert4 = P.Halfedges[P.Halfedges[P.Halfedges[2 * i + 1].NextHalfedge].NextHalfedge].StartVertex;
-
-                            Point3d P1 = P.Vertices[Vert1].ToPoint3d();
-                            Point3d P2 = P.Vertices[Vert2].ToPoint3d();
-                            Point3d P3 = P.Vertices[Vert3].ToPoint3d();
-                            Point3d P4 = P.Vertices[Vert4].ToPoint3d();
-
-                            double A1 = Vector3d.VectorAngle(new Vector3d(P3 - P1), new Vector3d(P4 - P1))
-                              + Vector3d.VectorAngle(new Vector3d(P4 - P2), new Vector3d(P3 - P2));
-
-                            double A2 = Vector3d.VectorAngle(new Vector3d(P1 - P4), new Vector3d(P2 - P4))
-                              + Vector3d.VectorAngle(new Vector3d(P2 - P3), new Vector3d(P1 - P3));
-
-                            if (A2 > A1)
+                            if (!P.Halfedges[2 * i].IsUnused
+                              && (P.Halfedges[2 * i].AdjacentFace != -1)
+                              && (P.Halfedges[2 * i + 1].AdjacentFace != -1)
+                              && (FeatureE[i] == -1)  // don't flip feature edges
+                              )
                             {
-                                P.Halfedges.FlipEdge(2 * i);
+                                int Vert1 = P.Halfedges[2 * i].StartVertex;
+                                int Vert2 = P.Halfedges[2 * i + 1].StartVertex;
+                                int Vert3 = P.Halfedges[P.Halfedges[P.Halfedges[2 * i].NextHalfedge].NextHalfedge].StartVertex;
+                                int Vert4 = P.Halfedges[P.Halfedges[P.Halfedges[2 * i + 1].NextHalfedge].NextHalfedge].StartVertex;
+
+                                int Valence1 = P.Vertices.GetValence(Vert1);
+                                int Valence2 = P.Vertices.GetValence(Vert2);
+                                int Valence3 = P.Vertices.GetValence(Vert3);
+                                int Valence4 = P.Vertices.GetValence(Vert4);
+
+                                if (P.Vertices.NakedEdgeCount(Vert1) > 0) { Valence1 += 2; }
+                                if (P.Vertices.NakedEdgeCount(Vert2) > 0) { Valence2 += 2; }
+                                if (P.Vertices.NakedEdgeCount(Vert3) > 0) { Valence3 += 2; }
+                                if (P.Vertices.NakedEdgeCount(Vert4) > 0) { Valence4 += 2; }
+
+                                int CurrentError =
+                                  Math.Abs(Valence1 - 6) +
+                                  Math.Abs(Valence2 - 6) +
+                                  Math.Abs(Valence3 - 6) +
+                                  Math.Abs(Valence4 - 6);
+                                int FlippedError =
+                                  Math.Abs(Valence1 - 7) +
+                                  Math.Abs(Valence2 - 7) +
+                                  Math.Abs(Valence3 - 5) +
+                                  Math.Abs(Valence4 - 5);
+                                if (CurrentError > FlippedError)
+                                {
+                                    P.Halfedges.FlipEdge(2 * i);
+                                }
                             }
                         }
                     }
-                }
+                    else
+                    {
+                        //Flip edges based on angle
+                        for (int i = 0; i < EdgeCount; i++)
+                        {
+                            if (!P.Halfedges[2 * i].IsUnused
+                              && (P.Halfedges[2 * i].AdjacentFace != -1)
+                              && (P.Halfedges[2 * i + 1].AdjacentFace != -1)
+                              && (FeatureE[i] == -1) // don't flip feature edges
+                              )
+                            {
+                                int Vert1 = P.Halfedges[2 * i].StartVertex;
+                                int Vert2 = P.Halfedges[2 * i + 1].StartVertex;
+                                int Vert3 = P.Halfedges[P.Halfedges[P.Halfedges[2 * i].NextHalfedge].NextHalfedge].StartVertex;
+                                int Vert4 = P.Halfedges[P.Halfedges[P.Halfedges[2 * i + 1].NextHalfedge].NextHalfedge].StartVertex;
 
-                //Relocate mesh vertices
-                //int Weighting = 0;
+                                Point3d P1 = P.Vertices[Vert1].ToPoint3d();
+                                Point3d P2 = P.Vertices[Vert2].ToPoint3d();
+                                Point3d P3 = P.Vertices[Vert3].ToPoint3d();
+                                Point3d P4 = P.Vertices[Vert4].ToPoint3d();
 
-                //if (Minim)
-                //{ 
-                //    Weighting = 1;
-                //    //smooth = 0.5 * SmoothStrength;
-                //}
+                                double A1 = Vector3d.VectorAngle(new Vector3d(P3 - P1), new Vector3d(P4 - P1))
+                                  + Vector3d.VectorAngle(new Vector3d(P4 - P2), new Vector3d(P3 - P2));
 
-                //Vector3d[] Smooth = LaplacianSmooth(P, Weighting, smooth);
+                                double A2 = Vector3d.VectorAngle(new Vector3d(P1 - P4), new Vector3d(P2 - P4))
+                                  + Vector3d.VectorAngle(new Vector3d(P2 - P3), new Vector3d(P1 - P3));
 
-                //new
+                                if (A2 > A1)
+                                {
+                                    P.Halfedges.FlipEdge(2 * i);
+                                }
+                            }
+                        }
+                    }
 
-                if (Minim)
-                {
-                    Vector3d[] SmoothC = LaplacianSmooth(P, 1, smooth);
+                    if (Minim)
+                    {
+                        Vector3d[] SmoothC = LaplacianSmooth(P, 1, smooth);
+
+                        for (int i = 0; i < P.Vertices.Count; i++)
+                        {
+                            if (AnchorV[i] == -1) // don't smooth feature vertices
+                            {
+                                P.Vertices.MoveVertex(i, 0.5 * SmoothC[i]);
+                            }
+                        }
+                    }
+
+                    Vector3d[] Smooth = LaplacianSmooth(P, 0, smooth);
 
                     for (int i = 0; i < P.Vertices.Count; i++)
                     {
                         if (AnchorV[i] == -1) // don't smooth feature vertices
                         {
-                            P.Vertices.MoveVertex(i, 0.5 * SmoothC[i]);
+                            // make it tangential only
+                            Vector3d VNormal = Normal(P, i);
+                            double ProjLength = Smooth[i] * VNormal;
+                            Smooth[i] = Smooth[i] - (VNormal * ProjLength);
+
+                            P.Vertices.MoveVertex(i, Smooth[i]);
+
+                            if (P.Vertices.NakedEdgeCount(i) != 0)//special smoothing for feature edges
+                            {
+                                int[] Neighbours = P.Vertices.GetVertexNeighbours(i);
+                                int ncount = 0;
+                                Point3d Avg = new Point3d();
+
+                                for (int j = 0; j < Neighbours.Length; j++)
+                                {
+                                    if (P.Vertices.NakedEdgeCount(Neighbours[j]) != 0)
+                                    {
+                                        ncount++;
+                                        Avg = Avg + P.Vertices[Neighbours[j]].ToPoint3d();
+                                    }
+                                }
+                                Avg = Avg * (1.0 / ncount);
+                                Vector3d move = Avg - P.Vertices[i].ToPoint3d();
+                                move = move * smooth;
+                                P.Vertices.MoveVertex(i, move);
+                            }
+
+                            if (FeatureV[i] != -1)//special smoothing for feature edges
+                            {
+                                int[] Neighbours = P.Vertices.GetVertexNeighbours(i);
+                                int ncount = 0;
+                                Point3d Avg = new Point3d();
+
+                                for (int j = 0; j < Neighbours.Length; j++)
+                                {
+                                    if ((FeatureV[Neighbours[j]] == FeatureV[i]) || (AnchorV[Neighbours[j]] != -1))
+                                    {
+                                        ncount++;
+                                        Avg = Avg + P.Vertices[Neighbours[j]].ToPoint3d();
+                                    }
+                                }
+                                Avg = Avg * (1.0 / ncount);
+                                Vector3d move = Avg - P.Vertices[i].ToPoint3d();
+                                move = move * smooth;
+                                P.Vertices.MoveVertex(i, move);
+                            }
+
+                            //projecting points onto the target along their normals
+
+                            if (pull > 0)
+                            {
+                                Point3d Point = P.Vertices[i].ToPoint3d();
+                                Vector3d normal = Normal(P, i);
+                                Ray3d Ray1 = new Ray3d(Point, normal);
+                                Ray3d Ray2 = new Ray3d(Point, -normal);
+                                double RayPt1 = Rhino.Geometry.Intersect.Intersection.MeshRay(M, Ray1);
+                                double RayPt2 = Rhino.Geometry.Intersect.Intersection.MeshRay(M, Ray2);
+                                Point3d ProjectedPt;
+
+                                if ((RayPt1 < RayPt2) && (RayPt1 > 0) && (RayPt1 < 1.0))
+                                {
+                                    ProjectedPt = Point * (1 - pull) + pull * Ray1.PointAt(RayPt1);
+                                }
+                                else if ((RayPt2 < RayPt1) && (RayPt2 > 0) && (RayPt2 < 1.0))
+                                {
+                                    ProjectedPt = Point * (1 - pull) + pull * Ray2.PointAt(RayPt2);
+                                }
+                                else
+                                {
+                                    ProjectedPt = Point * (1 - pull) + pull * M.ClosestPoint(Point);
+                                }
+
+                                P.Vertices.SetVertex(i, ProjectedPt);
+                            }
+
+
+                            if (FeatureV[i] != -1) //pull feature vertices onto feature curves
+                            {
+                                Point3d Point = P.Vertices[i].ToPoint3d();
+                                Curve CF = FC[FeatureV[i]];
+                                double param1 = 0.0;
+                                Point3d onFeature = new Point3d();
+                                CF.ClosestPoint(Point, out param1);
+                                onFeature = CF.PointAt(param1);
+                                P.Vertices.SetVertex(i, onFeature);
+                            }
+                        }
+                        else
+                        {
+                            P.Vertices.SetVertex(i, FV[AnchorV[i]]); //pull anchor vertices onto their points
                         }
                     }
+
+
+
+
+                    //end new
+
+
+
+
+                    AnchorV = CompactByVertex(P, AnchorV); //compact the fixed points along with the vertices
+                    FeatureV = CompactByVertex(P, FeatureV);
+                    FeatureE = CompactByEdge(P, FeatureE);
+
+                    P.Compact(); //this cleans the mesh data structure of unused elements
                 }
 
-                Vector3d[] Smooth = LaplacianSmooth(P, 0, smooth);
-
-                for (int i = 0; i < P.Vertices.Count; i++)
-                {
-                    if (AnchorV[i] == -1) // don't smooth feature vertices
-                    {
-                        // make it tangential only
-                        Vector3d VNormal = Normal(P, i);
-                        double ProjLength = Smooth[i] * VNormal;
-                        Smooth[i] = Smooth[i] - (VNormal * ProjLength);
-
-                        P.Vertices.MoveVertex(i, Smooth[i]);
-
-                        if (P.Vertices.NakedEdgeCount(i) != 0)//special smoothing for feature edges
-                        {
-                            int[] Neighbours = P.Vertices.GetVertexNeighbours(i);
-                            int ncount = 0;
-                            Point3d Avg = new Point3d();
-
-                            for (int j = 0; j < Neighbours.Length; j++)
-                            {
-                                if (P.Vertices.NakedEdgeCount(Neighbours[j]) != 0)
-                                {
-                                    ncount++;
-                                    Avg = Avg + P.Vertices[Neighbours[j]].ToPoint3d();
-                                }
-                            }
-                            Avg = Avg * (1.0 / ncount);
-                            Vector3d move = Avg - P.Vertices[i].ToPoint3d();
-                            move = move * smooth;
-                            P.Vertices.MoveVertex(i, move);
-                        }
-
-                        if (FeatureV[i] != -1)//special smoothing for feature edges
-                        {
-                            int[] Neighbours = P.Vertices.GetVertexNeighbours(i);
-                            int ncount = 0;
-                            Point3d Avg = new Point3d();
-
-                            for (int j = 0; j < Neighbours.Length; j++)
-                            {
-                                if ((FeatureV[Neighbours[j]] == FeatureV[i]) || (AnchorV[Neighbours[j]] != -1))
-                                {
-                                    ncount++;
-                                    Avg = Avg + P.Vertices[Neighbours[j]].ToPoint3d();
-                                }
-                            }
-                            Avg = Avg * (1.0 / ncount);
-                            Vector3d move = Avg - P.Vertices[i].ToPoint3d();
-                            move = move * smooth;
-                            P.Vertices.MoveVertex(i, move);
-                        }
-
-                        //projecting points onto the target along their normals
-
-                        if (pull > 0)
-                        {
-                            Point3d Point = P.Vertices[i].ToPoint3d();
-                            Vector3d normal = Normal(P, i);
-                            Ray3d Ray1 = new Ray3d(Point, normal);
-                            Ray3d Ray2 = new Ray3d(Point, -normal);
-                            double RayPt1 = Rhino.Geometry.Intersect.Intersection.MeshRay(M, Ray1);
-                            double RayPt2 = Rhino.Geometry.Intersect.Intersection.MeshRay(M, Ray2);
-                            Point3d ProjectedPt;
-
-                            if ((RayPt1 < RayPt2) && (RayPt1 > 0) && (RayPt1 < 1.0))
-                            {
-                                ProjectedPt = Point * (1 - pull) + pull * Ray1.PointAt(RayPt1);
-                            }
-                            else if ((RayPt2 < RayPt1) && (RayPt2 > 0) && (RayPt2 < 1.0))
-                            {
-                                ProjectedPt = Point * (1 - pull) + pull * Ray2.PointAt(RayPt2);
-                            }
-                            else
-                            {
-                                ProjectedPt = Point * (1 - pull) + pull * M.ClosestPoint(Point);
-                            }
-
-                            P.Vertices.SetVertex(i, ProjectedPt);
-                        }
-
-
-                        if (FeatureV[i] != -1) //pull feature vertices onto feature curves
-                        {
-                            Point3d Point = P.Vertices[i].ToPoint3d();
-                            Curve CF = FC[FeatureV[i]];
-                            double param1 = 0.0;
-                            Point3d onFeature = new Point3d();
-                            CF.ClosestPoint(Point, out param1);
-                            onFeature = CF.PointAt(param1);
-                            P.Vertices.SetVertex(i, onFeature);
-                        }
-                    }
-                    else
-                    {
-                        P.Vertices.SetVertex(i, FV[AnchorV[i]]); //pull anchor vertices onto their points
-                    }
-                }
-
-
-
-
-                //end new
-
-
-
-
-                AnchorV = CompactByVertex(P, AnchorV); //compact the fixed points along with the vertices
-                FeatureV = CompactByVertex(P, FeatureV);
-                FeatureE = CompactByEdge(P, FeatureE);
-
-                P.Compact(); //this cleans the mesh data structure of unused elements
             }
 
             DA.SetData(0, P);
@@ -679,10 +653,7 @@ namespace MeshMachine
         {
             get
             {
-                // You can add image files to your project resources and access them like this:
-                //return Resources.IconForThisComponent;
                 return MeshMachine.Properties.Resources.remesh2;
-                //return null;
             }
         }
 
