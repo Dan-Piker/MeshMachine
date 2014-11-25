@@ -8,8 +8,8 @@
     <ProjectGuid>{9EA05C6C-A88C-4FF2-8E7D-98FC412F4944}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>MeshMachine</RootNamespace>
-    <AssemblyName>MeshMachine</AssemblyName>
+    <RootNamespace>remesher</RootNamespace>
+    <AssemblyName>remesher</AssemblyName>
     <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <IsWebBootstrapper>false</IsWebBootstrapper>
@@ -43,23 +43,23 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="GH_IO">
-      <HintPath>..\lib\GH_IO.dll</HintPath>
+      <HintPath>..\..\..\..\..\..\Program Files\Common Files\McNeel\Rhinoceros\5.0\Plug-ins\Grasshopper (b45a29b1-4343-4035-989e-044e8580d9cf)\0.9.76.0\GH_IO.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Grasshopper">
-      <HintPath>..\lib\Grasshopper.dll</HintPath>
+      <HintPath>..\..\..\..\..\..\Program Files\Common Files\McNeel\Rhinoceros\5.0\Plug-ins\Grasshopper (b45a29b1-4343-4035-989e-044e8580d9cf)\0.9.76.0\Grasshopper.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="Plankton">
-      <HintPath>..\lib\Plankton.dll</HintPath>
+      <HintPath>..\..\..\..\AppData\Roaming\Grasshopper\Libraries\Plankton.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="PlanktonGh">
-      <HintPath>..\lib\Plankton.gha</HintPath>
+      <HintPath>..\..\..\..\AppData\Roaming\Grasshopper\Libraries\PlanktonGh.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="RhinoCommon">
-      <HintPath>..\lib\RhinoCommon.dll</HintPath>
+      <HintPath>..\..\..\..\..\..\Program Files\Rhinoceros 5 (64-bit)\System\RhinoCommon.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="System" />
@@ -68,10 +68,9 @@
     <Reference Include="System.Windows.Forms" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="MeshMachineComponent.cs" />
-    <Compile Include="MeshMachineComponent2.cs" />
-    <Compile Include="MeshMachineComponent3.cs" />
-    <Compile Include="MeshMachineInfo.cs" />
+    <Compile Include="ITargetLength.cs" />
+    <Compile Include="remesher.cs" />
+    <Compile Include="remesherInfo.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Properties\Resources.Designer.cs">
       <AutoGen>True</AutoGen>

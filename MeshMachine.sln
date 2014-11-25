@@ -1,7 +1,9 @@
 ﻿
-Microsoft Visual Studio Solution File, Format Version 11.00
-# Visual C# Express 2010
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MeshMachine", "src\MeshMachine.csproj", "{9EA05C6C-A88C-4FF2-8E7D-98FC412F4944}"
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 2013
+VisualStudioVersion = 12.0.30723.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "remesher", "src\remesher.csproj", "{9EA05C6C-A88C-4FF2-8E7D-98FC412F4944}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

@@ -2,16 +2,20 @@
 using System.Collections.Generic;
 using Grasshopper.Kernel;
 using Grasshopper.Kernel.Types;
+using Grasshopper.Kernel.Data;
+using Grasshopper.Kernel.Parameters;
 using Rhino.Geometry;
 using Plankton;
 using PlanktonGh;
 
-namespace MeshMachine
+
+
+namespace remesher
 {
-    public class MeshMachineComponent3 : GH_Component
+    public class remesher : GH_Component
     {
-        public MeshMachineComponent3()
-            : base("MeshMachine", "MeshMachine",
+        public remesher()
+            : base("remesher", "remesher",
                 "Remeshing tool",
                 "Kangaroo", "Mesh")
         {
@@ -20,11 +24,17 @@ namespace MeshMachine
 
         protected override void RegisterInputParams(GH_InputParamManager pManager)
         {
+            //0
             pManager.AddGeometryParameter("Geometry", "Geom", "Input Surface or Mesh", GH_ParamAccess.item);
-            pManager.AddNumberParameter("Length", "Length", "Target edge length", GH_ParamAccess.item, 1.0);
 
+            //1
+            pManager.AddGenericParameter("TargetLengthFunction", "L", "A function determining local edge length", GH_ParamAccess.item);           
+
+            //2
             pManager.AddCurveParameter("FixCurves", "FixC", "Curves which will be kept sharp during remeshing. Can be boundary or internal curves", GH_ParamAccess.list);
             pManager[2].Optional = true;
+            
+            //3
             pManager.AddPointParameter("FixVertices", "FixV", "Points to keep fixed during remeshing", GH_ParamAccess.list);
             pManager[3].Optional = true;
 
@@ -33,37 +43,12 @@ namespace MeshMachine
 
             //5
             pManager.AddNumberParameter("PullStrength", "Pull", "Strength of pull to target geometry (between 0 and 1). Set to 0 for minimal surfaces", GH_ParamAccess.item, 0.8);
-
+         
             //6
-            pManager.AddNumberParameter("CurvatureAdaptivity", "Adapt", "If greater than 0, edges will be shorter in regions of tighter curvature (Values between 0 and 1 blend between uniform lengths and fully curvature dependent)", GH_ParamAccess.item, 0);
-
-            //7
-            pManager.AddNumberParameter("BoundaryScale", "BScale", "Edge length reduction factor at boundaries. Should be greater than 0 and less than 1", GH_ParamAccess.item, 1.0);
-
-            //8
-            pManager.AddNumberParameter("BoundaryDistance", "BDist", "Distance over which to blend to boundary edge scale", GH_ParamAccess.item, 5.0);
-
-            //9
-            pManager.AddPointParameter("SizePoints", "SizP", "Locations for edge length values to interpolate between", GH_ParamAccess.list);
-            pManager[9].Optional = true;
-
-            //10
-            pManager.AddNumberParameter("SizeValues", "SizV", "Edge lengths to interpolate", GH_ParamAccess.list);
-            pManager[10].Optional = true;
-
-            //11
-            pManager.AddIntegerParameter("Exponent", "Exp", "Power for interpolation (see http://en.wikipedia.org/wiki/Inverse_distance_weighting#Shepard.27s_method)", GH_ParamAccess.item, 2);
-
-            //12
-            pManager.AddNumberParameter("Background", "Bkgd", "Weighting for background edge length in interpolation", GH_ParamAccess.item, 0.5);
-
-            //13
             pManager.AddIntegerParameter("Iterations", "Iter", "Number of steps between outputs", GH_ParamAccess.item, 1);
 
-            //14
-            pManager.AddBooleanParameter("Reset", "Reset", "True to initialize, false to run remeshing. Connect a timer for continuous remeshing", GH_ParamAccess.item, true);
-            //later add pressure/volume?
-
+            //7
+            pManager.AddBooleanParameter("Reset", "Reset", "True to initialize, false to run remeshing. Connect a timer for continuous remeshing", GH_ParamAccess.item, true);     
         }
 
         protected override void RegisterOutputParams(GH_OutputParamManager pManager)
@@ -77,61 +62,37 @@ namespace MeshMachine
         private List<int> FeatureV = new List<int>();
         private List<int> FeatureE = new List<int>();
         private bool initialized;
-
-        /// <summary>
-        /// This is the method that actually does the work.
-        /// </summary>
-        /// <param name="DA">The DA object can be used to retrieve data from input parameters and 
-        /// to store data in output parameters.</param>
+ 
         protected override void SolveInstance(IGH_DataAccess DA)
         {
-
-            bool reset = false;
-            double L = new double();
+            ITargetLength TargetLength = null;            
+            bool reset = false;           
             int Flip = 0;
             List<Curve> FC = new List<Curve>();
             List<Point3d> FV = new List<Point3d>();
             double FixT = 0.01;
             double PullStrength = 0.8;
-            double SmoothStrength = 0.8;
-            //int Smoothweight = 0;
-            double LengthTol = 0.15;
-            double CurvDep = 0;
-            //double Blend = 0;
+            double SmoothStrength = 0.8;          
+            double LengthTol = 0.15;   
             bool Minim = false;
-
-            double BoundScale = 1.0;
-            double BoundDist = 5.0;
-
-            var SizP = new List<Point3d>();
-            var SizV = new List<double>();
-            int WExp = 2;
-            double BGW = 1;
-
             int Iters = 1;
 
-            DA.GetData<double>(1, ref L);
+            GH_ObjectWrapper Surf = new GH_ObjectWrapper();
+            DA.GetData<GH_ObjectWrapper>(0, ref Surf);
+            
+            GH_ObjectWrapper Obj = null;
+            DA.GetData<GH_ObjectWrapper>(1, ref Obj);         
+            TargetLength = Obj.Value as ITargetLength;           
+                   
             DA.GetDataList<Curve>(2, FC);
             DA.GetDataList<Point3d>(3, FV);
             DA.GetData<int>(4, ref Flip);
 
             DA.GetData<double>(5, ref PullStrength);
+           
+            DA.GetData<int>(6, ref Iters);
+            DA.GetData<bool>(7, ref reset);
 
-            DA.GetData<double>(6, ref CurvDep);
-
-            DA.GetData<double>(7, ref BoundScale);
-            DA.GetData<double>(8, ref BoundDist);
-
-            DA.GetDataList<Point3d>(9, SizP);
-            DA.GetDataList<double>(10, SizV);
-
-            DA.GetData<int>(11, ref WExp);
-            DA.GetData<double>(12, ref BGW);
-            DA.GetData<int>(13, ref Iters);
-            DA.GetData<bool>(14, ref reset);
-
-            Grasshopper.Kernel.Types.GH_ObjectWrapper Surf = new Grasshopper.Kernel.Types.GH_ObjectWrapper();
-            DA.GetData<Grasshopper.Kernel.Types.GH_ObjectWrapper>(0, ref Surf);
 
             if (PullStrength == 0) { Minim = true; }
 
@@ -142,6 +103,7 @@ namespace MeshMachine
             }
             else
             {
+                double L = 1.0;
                 MeshingParameters MeshParams = new MeshingParameters();
                 MeshParams.MaximumEdgeLength = 3 * L;
                 MeshParams.MinimumEdgeLength = L;
@@ -244,46 +206,9 @@ namespace MeshMachine
 
                             if ((Visited[vStart] == false)
                               && (Visited[vEnd] == false))
-                            {
-                                double L2 = L;
-                                Point3d Mid = MidPt(P, i);
+                            {                    
 
-                                if (CurvDep > 0)
-                                {
-                                    double NormDiff = Vector3d.VectorAngle(Normals[vStart], Normals[vEnd]);
-                                    L2 = Math.Min((1.0 / (3.0 * NormDiff) * L), 5 * L);
-
-                                    if (CurvDep != 1)
-                                    {
-                                        L2 = L2 * (CurvDep) + L * (1.0 - CurvDep);
-                                    }
-
-                                }
-                                if (BoundScale != 1.0)
-                                {
-                                    double MinDist = 99954;
-
-                                    for (int j = 0; j < FC.Count; j++)
-                                    {
-                                        double param = new double();
-
-                                        FC[j].ClosestPoint(Mid, out param);
-                                        double ThisDist = Mid.DistanceTo(FC[j].PointAt(param));
-                                        if (ThisDist < MinDist)
-                                        { MinDist = ThisDist; }
-                                    }
-
-                                    if (MinDist < BoundDist)
-                                    {
-                                        L2 = L2 * BoundScale + (MinDist / BoundDist) * (L2 * (1 - BoundScale));
-                                    }
-                                }
-
-                                if (SizP.Count > 0)
-                                {
-                                    L2 = WeightedCombo(Mid, SizP, SizV, WExp, L2, BGW);
-                                    //  L2 = (WL * (1.0 - BGW)) + (BGW * L2);
-                                }
+                                double L2 = TargetLength.Calculate(P, 2 * i);
 
                                 if (EdgeLength[2 * i] > (1 + t) * (4f / 3f) * L2)
                                 {
@@ -360,46 +285,12 @@ namespace MeshMachine
                                         }
                                     }
 
-                                    double L2 = L;
                                     Point3d Mid = MidPt(P, i);
 
-                                    if (CurvDep > 0)
-                                    {
-                                        double NormDiff = Vector3d.VectorAngle(Normals[vStart], Normals[vEnd]);
-                                        L2 = Math.Min((1.0 / (3.0 * NormDiff) * L), 5 * L);
 
-                                        if (CurvDep != 1)
-                                        {
-                                            L2 = L2 * (CurvDep) + L * (1.0 - CurvDep);
-                                        }
-                                    }
+                                    double L2 = TargetLength.Calculate(P, 2 * i);
 
-                                    if (BoundScale != 1.0)
-                                    {
-                                        double MinDist = 99954;
-
-                                        for (int j = 0; j < FC.Count; j++)
-                                        {
-                                            double param = new double();
-
-                                            FC[j].ClosestPoint(Mid, out param);
-                                            double ThisDist = Mid.DistanceTo(FC[j].PointAt(param));
-                                            if (ThisDist < MinDist)
-                                            { MinDist = ThisDist; }
-                                        }
-
-                                        if (MinDist < BoundDist)
-                                        {
-                                            L2 = L2 * BoundScale + (MinDist / BoundDist) * (L2 * (1 - BoundScale));
-                                        }
-                                    }
-
-                                    if (SizP.Count > 0)
-                                    {
-                                        L2 = WeightedCombo(Mid, SizP, SizV, WExp, L2, BGW);
-                                        //double WL = WeightedCombo(Mid, SizP, SizV, WExp);
-                                        //L2 = (WL * (1.0 - BGW)) + (BGW * L2);
-                                    }
+                             
 
                                     if ((Collapse_option != 0) && (EdgeLength[2 * i] < (1 - t) * 4f / 5f * L2))
                                     {
@@ -645,26 +536,17 @@ namespace MeshMachine
             DA.SetData(0, P);
         }
 
-        /// <summary>
-        /// Provides an Icon for every component that will be visible in the User Interface.
-        /// Icons need to be 24x24 pixels.
-        /// </summary>
         protected override System.Drawing.Bitmap Icon
         {
             get
             {
-                return MeshMachine.Properties.Resources.remesh2;
+                return Properties.Resources.remesh2;
             }
         }
 
-        /// <summary>
-        /// Each component must have a unique Guid to identify it. 
-        /// It is vital this Guid doesn't change otherwise old ghx files 
-        /// that use the old ID will partially fail during loading.
-        /// </summary>
         public override Guid ComponentGuid
         {
-            get { return new Guid("{502f3639-bf2e-4c15-b50f-a14c8344edea}"); }
+            get { return new Guid("{2b653315-c690-4670-b001-a2070dd060d4}"); }
         }
 
         private Point3d MidPt(PlanktonMesh P, int E)

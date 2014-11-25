@@ -1,8 +1,8 @@
 ﻿using Grasshopper.Kernel;
 
-namespace MeshMachine
+namespace remesher
 {
-    public class MeshMachineInfo : GH_AssemblyInfo
+    public class remesherInfo : GH_AssemblyInfo
     {
         public override string AssemblyName
         {
