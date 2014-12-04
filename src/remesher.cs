@@ -411,24 +411,30 @@ namespace remesher
                         }
                     }
 
-                    P = P.ReplaceVertices(VertexMove.NewPositions(P, FeatureV, FeatureE, FV, FC));
-                    
-                    /*
-                    if (Minim)
-                    {
-                        Vector3d[] SmoothC = LaplacianSmooth(P, 1, smooth);
+                    P = P.ReplaceVertices(VertexMove.NewPositions(P));
 
-                        for (int i = 0; i < P.Vertices.Count; i++)
+
+                    for (int i = 0; i < P.Vertices.Count; i++)
+                    {
+                        if (AnchorV[i] == -1) // don't smooth feature vertices
                         {
-                            if (AnchorV[i] == -1) // don't smooth feature vertices
+                            if (FeatureV[i] != -1) //pull feature vertices onto feature curves
                             {
-                                P.Vertices.MoveVertex(i, 0.5 * SmoothC[i]);
+                                Point3d Point = P.Vertices[i].ToPoint3d();
+                                Curve CF = FC[FeatureV[i]];
+                                double param1 = 0.0;
+                                Point3d onFeature = new Point3d();
+                                CF.ClosestPoint(Point, out param1);
+                                onFeature = CF.PointAt(param1);
+                                P.Vertices.SetVertex(i, onFeature);
                             }
                         }
+                        else
+                        {
+                            P.Vertices.SetVertex(i, FV[AnchorV[i]]); //pull anchor vertices onto their points
+                        }
                     }
-
-                    Vector3d[] Smooth = LaplacianSmooth(P, 0, smooth);
-
+                    /*
                     for (int i = 0; i < P.Vertices.Count; i++)
                     {
                         if (AnchorV[i] == -1) // don't smooth feature vertices
@@ -595,7 +601,7 @@ namespace remesher
             return L2;
         }
 
-        private Vector3d Normal(PlanktonMesh P, int V)
+        public static Vector3d Normal(PlanktonMesh P, int V)
         {
             Point3d Vertex = P.Vertices[V].ToPoint3d();
             Vector3d Norm = new Vector3d();
@@ -620,6 +626,16 @@ namespace remesher
 
             Norm.Unitize();
             return Norm;
+        }
+
+        public static List<Vector3d> Normals(PlanktonMesh P)
+        {
+            var normals = new List<Vector3d>();
+            for(int i = 0; i < P.Vertices.Count; i++)
+            {
+                normals.Add(Normal(P, i));
+            }
+            return normals;
         }
 
         private double CreaseAngle(PlanktonMesh P, int HE)

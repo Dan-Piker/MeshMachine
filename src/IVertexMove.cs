@@ -16,6 +16,6 @@ namespace remesher
 {
     public interface IVertexMove
     {
-        List<Point3d> NewPositions(PlanktonMesh P, List<int> FeatureV, List<int> FeatureE, List<Point3d> FV, List<Curve> FC);   
+        List<Point3d> NewPositions(PlanktonMesh P);   
     }
 }

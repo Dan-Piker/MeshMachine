@@ -55,7 +55,7 @@
       <Private>False</Private>
     </Reference>
     <Reference Include="PlanktonGh">
-      <HintPath>..\lib\Plankton.gha</HintPath>
+      <HintPath>..\lib\PlanktonGh.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="RhinoCommon">
