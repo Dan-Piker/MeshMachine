@@ -9,7 +9,6 @@ using Plankton;
 using PlanktonGh;
 
 
-
 namespace remesher
 {
     public class remesher : GH_Component
@@ -28,21 +27,24 @@ namespace remesher
             pManager.AddGeometryParameter("Geometry", "Geom", "Input Surface or Mesh", GH_ParamAccess.item);
 
             //1
-            pManager.AddGenericParameter("TargetLengthFunction", "L", "A function determining local edge length", GH_ParamAccess.item);           
+            pManager.AddGenericParameter("TargetLengthFunction", "L", "A function determining local edge length", GH_ParamAccess.item);
 
             //2
-            pManager.AddCurveParameter("FixCurves", "FixC", "Curves which will be kept sharp during remeshing. Can be boundary or internal curves", GH_ParamAccess.list);
-            pManager[2].Optional = true;
-            
-            //3
-            pManager.AddPointParameter("FixVertices", "FixV", "Points to keep fixed during remeshing", GH_ParamAccess.list);
-            pManager[3].Optional = true;
+            pManager.AddGenericParameter("VertexMoveFunction", "VM", "Vertex relocation, such as smoothing, projecting to a surface, etc", GH_ParamAccess.item);
 
+            //3
+            pManager.AddCurveParameter("FixCurves", "FixC", "Curves which will be kept sharp during remeshing. Can be boundary or internal curves", GH_ParamAccess.list);
+            pManager[3].Optional = true;
+            
             //4
-            pManager.AddIntegerParameter("Flip", "Flip", "Criterion used to decide when to flip edges (0 for valence based, 1 for angle based)", GH_ParamAccess.item, 1);
+            pManager.AddPointParameter("FixVertices", "FixV", "Points to keep fixed during remeshing", GH_ParamAccess.list);
+            pManager[4].Optional = true;
 
             //5
-            pManager.AddNumberParameter("PullStrength", "Pull", "Strength of pull to target geometry (between 0 and 1). Set to 0 for minimal surfaces", GH_ParamAccess.item, 0.8);
+            pManager.AddIntegerParameter("Flip", "Flip", "Criterion used to decide when to flip edges (0 for valence based, 1 for angle based)", GH_ParamAccess.item, 1);
+
+            ////5
+            //pManager.AddNumberParameter("PullStrength", "Pull", "Strength of pull to target geometry (between 0 and 1). Set to 0 for minimal surfaces", GH_ParamAccess.item, 0.8);
          
             //6
             pManager.AddIntegerParameter("Iterations", "Iter", "Number of steps between outputs", GH_ParamAccess.item, 1);
@@ -65,36 +67,41 @@ namespace remesher
  
         protected override void SolveInstance(IGH_DataAccess DA)
         {
-            ITargetLength TargetLength = null;            
+            ITargetLength TargetLength = null;
+            IVertexMove VertexMove = null;
             bool reset = false;           
             int Flip = 0;
             List<Curve> FC = new List<Curve>();
             List<Point3d> FV = new List<Point3d>();
             double FixT = 0.01;
-            double PullStrength = 0.8;
-            double SmoothStrength = 0.8;          
+            //double PullStrength = 0.8;
+            //double SmoothStrength = 0.8;          
             double LengthTol = 0.15;   
-            bool Minim = false;
+            //bool Minim = false;
             int Iters = 1;
 
             GH_ObjectWrapper Surf = new GH_ObjectWrapper();
             DA.GetData<GH_ObjectWrapper>(0, ref Surf);
             
-            GH_ObjectWrapper Obj = null;
-            DA.GetData<GH_ObjectWrapper>(1, ref Obj);         
-            TargetLength = Obj.Value as ITargetLength;           
-                   
-            DA.GetDataList<Curve>(2, FC);
-            DA.GetDataList<Point3d>(3, FV);
-            DA.GetData<int>(4, ref Flip);
+            GH_ObjectWrapper TL = null;
+            DA.GetData<GH_ObjectWrapper>(1, ref TL);         
+            TargetLength = TL.Value as ITargetLength;
 
-            DA.GetData<double>(5, ref PullStrength);
+            GH_ObjectWrapper VM = null;
+            DA.GetData<GH_ObjectWrapper>(2, ref VM);
+            VertexMove = VM.Value as IVertexMove;     
+                   
+            DA.GetDataList<Curve>(3, FC);
+            DA.GetDataList<Point3d>(4, FV);
+            DA.GetData<int>(5, ref Flip);
+
+           // DA.GetData<double>(5, ref PullStrength);
            
             DA.GetData<int>(6, ref Iters);
             DA.GetData<bool>(7, ref reset);
 
 
-            if (PullStrength == 0) { Minim = true; }
+          //  if (PullStrength == 0) { Minim = true; }
 
             if (Surf.Value is GH_Mesh)
             {
@@ -193,8 +200,8 @@ namespace remesher
                     }
 
                     double t = LengthTol;     //a tolerance for when to split/collapse edges
-                    double smooth = SmoothStrength;  //smoothing strength
-                    double pull = PullStrength;  //pull to target mesh strength               
+                   // double smooth = SmoothStrength;  //smoothing strength
+                   // double pull = PullStrength;  //pull to target mesh strength               
 
                     // Split the edges that are too long
                     for (int i = 0; i < EdgeCount; i++)
@@ -326,7 +333,7 @@ namespace remesher
 
                     EdgeCount = P.Halfedges.Count / 2;
 
-                    if ((Flip == 0) && (PullStrength > 0))
+                    if (Flip == 0)
                     {
                         //Flip edges to reduce valence error
                         for (int i = 0; i < EdgeCount; i++)
@@ -404,6 +411,9 @@ namespace remesher
                         }
                     }
 
+                    P = P.ReplaceVertices(VertexMove.NewPositions(P, FeatureV, FeatureE, FV, FC));
+                    
+                    /*
                     if (Minim)
                     {
                         Vector3d[] SmoothC = LaplacianSmooth(P, 1, smooth);
@@ -516,10 +526,9 @@ namespace remesher
                         }
                     }
 
+                    */
 
-
-
-                    //end new
+                  
 
 
 
@@ -666,7 +675,7 @@ namespace remesher
             return WeightedSize;
         }
 
-        private static Vector3d[] LaplacianSmooth(PlanktonMesh P, int W, double Strength)
+        public static Vector3d[] LaplacianSmooth(PlanktonMesh P, int W, double Strength)
         {
             int VertCount = P.Vertices.Count;
             Vector3d[] Smooth = new Vector3d[VertCount];
