@@ -50,7 +50,9 @@ namespace remesher
             pManager.AddIntegerParameter("Iterations", "Iter", "Number of steps between outputs", GH_ParamAccess.item, 1);
 
             //7
-            pManager.AddBooleanParameter("Reset", "Reset", "True to initialize, false to run remeshing. Connect a timer for continuous remeshing", GH_ParamAccess.item, true);     
+            pManager.AddBooleanParameter("Reset", "Reset", "True to initialize, false to run remeshing. Connect a timer for continuous remeshing", GH_ParamAccess.item, true);
+
+            pManager.AddNumberParameter("tol", "tol", "tol", GH_ParamAccess.item, 0.2);
         }
 
         protected override void RegisterOutputParams(GH_OutputParamManager pManager)
@@ -99,6 +101,8 @@ namespace remesher
            
             DA.GetData<int>(6, ref Iters);
             DA.GetData<bool>(7, ref reset);
+
+            DA.GetData<double>(8, ref LengthTol);
 
 
           //  if (PullStrength == 0) { Minim = true; }
@@ -411,6 +415,12 @@ namespace remesher
                         }
                     }
 
+                    AnchorV = CompactByVertex(P, AnchorV); //compact the fixed points along with the vertices
+                    FeatureV = CompactByVertex(P, FeatureV);
+                    FeatureE = CompactByEdge(P, FeatureE);
+
+                    P.Compact(); //this cleans the mesh data structure of unused elements
+
                     P = P.ReplaceVertices(VertexMove.NewPositions(P));
 
 
@@ -539,11 +549,6 @@ namespace remesher
 
 
 
-                    AnchorV = CompactByVertex(P, AnchorV); //compact the fixed points along with the vertices
-                    FeatureV = CompactByVertex(P, FeatureV);
-                    FeatureE = CompactByEdge(P, FeatureE);
-
-                    P.Compact(); //this cleans the mesh data structure of unused elements
                 }
 
             }
